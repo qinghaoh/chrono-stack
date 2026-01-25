@@ -56,20 +56,29 @@
   flex: 1;
 }
 
-.resolution-selector {
+.controls-group {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+
+.resolution-selector,
+.orientation-selector {
   display: flex;
   align-items: center;
   gap: 0.5rem;
 }
 
-.resolution-label {
+.resolution-label,
+.orientation-label {
   font-size: 0.9rem;
   font-weight: 500;
   color: #4b5563;
   white-space: nowrap;
 }
 
-.resolution-select {
+.resolution-select,
+.orientation-select {
   padding: 0.5rem 0.75rem;
   font-size: 0.9rem;
   border: 2px solid #d1d5db;
@@ -80,11 +89,13 @@
   transition: border-color 0.2s;
 }
 
-.resolution-select:hover {
+.resolution-select:hover,
+.orientation-select:hover {
   border-color: #9ca3af;
 }
 
-.resolution-select:focus {
+.resolution-select:focus,
+.orientation-select:focus {
   outline: none;
   border-color: #667eea;
   box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
@@ -248,11 +259,18 @@ kbd {
     align-items: flex-start;
   }
 
-  .resolution-selector {
+  .controls-group {
+    flex-direction: column;
     width: 100%;
   }
 
-  .resolution-select {
+  .resolution-selector,
+  .orientation-selector {
+    width: 100%;
+  }
+
+  .resolution-select,
+  .orientation-select {
     flex: 1;
   }
 

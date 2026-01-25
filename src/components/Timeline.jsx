@@ -15,7 +15,7 @@ const COLORS = [
   '#6366f1', // indigo
 ];
 
-function Timeline({ events, resolution = 'year' }) {
+function Timeline({ events, resolution = 'year', orientation = 'horizontal' }) {
   const layeredEvents = useMemo(() => calculateLayers(events), [events]);
   const timeRange = useMemo(() => getTimeRange(events), [events]);
   const categoryLabels = useMemo(() => getCategoryLabels(layeredEvents), [layeredEvents]);
@@ -28,9 +28,27 @@ function Timeline({ events, resolution = 'year' }) {
     );
   }
 
+  if (orientation === 'vertical') {
+    return <TimelineVertical
+      layeredEvents={layeredEvents}
+      timeRange={timeRange}
+      categoryLabels={categoryLabels}
+      resolution={resolution}
+    />;
+  }
+
+  return <TimelineHorizontal
+    layeredEvents={layeredEvents}
+    timeRange={timeRange}
+    categoryLabels={categoryLabels}
+    resolution={resolution}
+  />;
+}
+
+function TimelineHorizontal({ layeredEvents, timeRange, categoryLabels, resolution }) {
   const numLayers = Math.max(...layeredEvents.map(e => e.layer), 0) + 1;
   const hasCategories = categoryLabels.size > 0;
-  const leftPadding = hasCategories ? 120 : 60; // Extra space for category labels
+  const leftPadding = hasCategories ? 120 : 60;
   const padding = 60;
   const width = 1200;
   const layerHeight = 60;
@@ -38,12 +56,10 @@ function Timeline({ events, resolution = 'year' }) {
   const timelineWidth = width - leftPadding - padding;
   const timeSpan = timeRange.max - timeRange.min;
 
-  // Helper function to convert time value to x position
   const timeToX = (time) => {
     return leftPadding + ((time - timeRange.min) / timeSpan) * timelineWidth;
   };
 
-  // Generate time axis markers
   const timeMarkers = [];
   const markerInterval = Math.max(1, Math.ceil(timeSpan / 10));
   for (let time = Math.ceil(timeRange.min / markerInterval) * markerInterval;
@@ -55,7 +71,7 @@ function Timeline({ events, resolution = 'year' }) {
   return (
     <div className="timeline-container">
       <svg width={width} height={height} className="timeline-svg">
-        {/* Category labels (for fixed-layering mode) */}
+        {/* Category labels */}
         {hasCategories && Array.from(categoryLabels.entries()).map(([layerIndex, label]) => (
           <g key={`label-${layerIndex}`}>
             <rect
@@ -158,6 +174,158 @@ function Timeline({ events, resolution = 'year' }) {
                 className="timeline-text"
               >
                 {event.startStr || formatTimeValue(event.start, resolution)} - {event.endStr || formatTimeValue(event.end, resolution)}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+    </div>
+  );
+}
+
+function TimelineVertical({ layeredEvents, timeRange, categoryLabels, resolution }) {
+  const numLayers = Math.max(...layeredEvents.map(e => e.layer), 0) + 1;
+  const hasCategories = categoryLabels.size > 0;
+  const topPadding = hasCategories ? 100 : 60;
+  const padding = 60;
+  const height = 1200;
+  const layerWidth = 80;
+  const width = numLayers * layerWidth + padding * 2;
+  const timelineHeight = height - topPadding - padding;
+  const timeSpan = timeRange.max - timeRange.min;
+
+  const timeToY = (time) => {
+    return topPadding + ((time - timeRange.min) / timeSpan) * timelineHeight;
+  };
+
+  const timeMarkers = [];
+  const markerInterval = Math.max(1, Math.ceil(timeSpan / 10));
+  for (let time = Math.ceil(timeRange.min / markerInterval) * markerInterval;
+       time <= timeRange.max;
+       time += markerInterval) {
+    timeMarkers.push(time);
+  }
+
+  return (
+    <div className="timeline-container">
+      <svg width={width} height={height} className="timeline-svg">
+        {/* Category labels (at top) */}
+        {hasCategories && Array.from(categoryLabels.entries()).map(([layerIndex, label]) => (
+          <g key={`label-${layerIndex}`}>
+            <rect
+              x={padding + layerIndex * layerWidth}
+              y={10}
+              width={layerWidth - 10}
+              height={topPadding - 20}
+              fill="#f3f4f6"
+              stroke="#d1d5db"
+              strokeWidth="1"
+              rx="4"
+            />
+            <text
+              x={padding + layerIndex * layerWidth + layerWidth / 2}
+              y={topPadding / 2}
+              textAnchor="middle"
+              dominantBaseline="middle"
+              fontSize="13"
+              fontWeight="600"
+              fill="#374151"
+              className="category-label"
+            >
+              {label}
+            </text>
+          </g>
+        ))}
+
+        {/* Time axis (vertical) */}
+        <line
+          x1={padding / 2}
+          y1={topPadding}
+          x2={padding / 2}
+          y2={height - padding}
+          stroke="#333"
+          strokeWidth="2"
+        />
+
+        {/* Time markers */}
+        {timeMarkers.map(time => (
+          <g key={time}>
+            <line
+              x1={padding / 2 - 10}
+              y1={timeToY(time)}
+              x2={padding / 2}
+              y2={timeToY(time)}
+              stroke="#333"
+              strokeWidth="2"
+            />
+            <text
+              x={padding / 2 - 15}
+              y={timeToY(time)}
+              textAnchor="end"
+              dominantBaseline="middle"
+              fontSize="14"
+              fill="#333"
+            >
+              {formatTimeValue(time, resolution)}
+            </text>
+          </g>
+        ))}
+
+        {/* Timeline events */}
+        {layeredEvents.map((event, index) => {
+          const y = timeToY(event.start);
+          const eventHeight = timeToY(event.end) - y;
+          const x = padding + event.layer * layerWidth;
+          const color = COLORS[index % COLORS.length];
+
+          return (
+            <g key={`${event.name}-${index}`}>
+              <rect
+                x={x}
+                y={y}
+                width={layerWidth - 10}
+                height={eventHeight}
+                fill={color}
+                stroke="#fff"
+                strokeWidth="2"
+                rx="4"
+                className="timeline-event"
+              />
+              {/* Name - horizontal text */}
+              <text
+                x={x + (layerWidth - 10) / 2}
+                y={y + 20}
+                textAnchor="middle"
+                dominantBaseline="middle"
+                fill="#fff"
+                fontSize="12"
+                fontWeight="bold"
+                className="timeline-text"
+              >
+                {event.name}
+              </text>
+              {/* Time period - horizontal text */}
+              <text
+                x={x + (layerWidth - 10) / 2}
+                y={y + eventHeight - 20}
+                textAnchor="middle"
+                dominantBaseline="middle"
+                fill="#fff"
+                fontSize="10"
+                className="timeline-text"
+              >
+                {event.startStr || formatTimeValue(event.start, resolution)}
+              </text>
+              <text
+                x={x + (layerWidth - 10) / 2}
+                y={y + eventHeight - 8}
+                textAnchor="middle"
+                dominantBaseline="middle"
+                fill="#fff"
+                fontSize="10"
+                className="timeline-text"
+              >
+                {event.endStr || formatTimeValue(event.end, resolution)}
               </text>
             </g>
           );

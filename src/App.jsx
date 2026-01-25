@@ -20,6 +20,7 @@ const RESOLUTION_PLACEHOLDERS = {
 function App() {
   const [input, setInput] = useState(DEFAULT_DATA);
   const [resolution, setResolution] = useState('year');
+  const [orientation, setOrientation] = useState('horizontal');
   const [events, setEvents] = useState(parseTimelineData(DEFAULT_DATA, 'year'));
 
   const handleVisualize = () => {
@@ -58,20 +59,36 @@ function App() {
                 Format: {RESOLUTION_FORMATS[resolution]}
               </span>
             </label>
-            <div className="resolution-selector">
-              <label htmlFor="resolution" className="resolution-label">
-                Resolution:
-              </label>
-              <select
-                id="resolution"
-                className="resolution-select"
-                value={resolution}
-                onChange={(e) => handleResolutionChange(e.target.value)}
-              >
-                <option value="year">Year</option>
-                <option value="month">Month</option>
-                <option value="day">Day</option>
-              </select>
+            <div className="controls-group">
+              <div className="resolution-selector">
+                <label htmlFor="resolution" className="resolution-label">
+                  Resolution:
+                </label>
+                <select
+                  id="resolution"
+                  className="resolution-select"
+                  value={resolution}
+                  onChange={(e) => handleResolutionChange(e.target.value)}
+                >
+                  <option value="year">Year</option>
+                  <option value="month">Month</option>
+                  <option value="day">Day</option>
+                </select>
+              </div>
+              <div className="orientation-selector">
+                <label htmlFor="orientation" className="orientation-label">
+                  Orientation:
+                </label>
+                <select
+                  id="orientation"
+                  className="orientation-select"
+                  value={orientation}
+                  onChange={(e) => setOrientation(e.target.value)}
+                >
+                  <option value="horizontal">Horizontal</option>
+                  <option value="vertical">Vertical</option>
+                </select>
+              </div>
             </div>
           </div>
           <textarea
@@ -103,7 +120,7 @@ function App() {
         </div>
 
         <div className="visualization-section">
-          <Timeline events={events} resolution={resolution} />
+          <Timeline events={events} resolution={resolution} orientation={orientation} />
         </div>
 
         <div className="examples-section">
