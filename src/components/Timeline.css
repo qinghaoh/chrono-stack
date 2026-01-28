@@ -1,10 +1,32 @@
 .timeline-container {
   width: 100%;
-  overflow-x: auto;
   background: #f9fafb;
   border-radius: 8px;
   padding: 20px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.timeline-horizontal-scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.timeline-horizontal-scroll::-webkit-scrollbar {
+  height: 12px;
+}
+
+.timeline-horizontal-scroll::-webkit-scrollbar-track {
+  background: #e5e7eb;
+  border-radius: 6px;
+}
+
+.timeline-horizontal-scroll::-webkit-scrollbar-thumb {
+  background: #9ca3af;
+  border-radius: 6px;
+}
+
+.timeline-horizontal-scroll::-webkit-scrollbar-thumb:hover {
+  background: #6b7280;
 }
 
 .timeline-svg {

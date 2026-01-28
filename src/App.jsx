@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import Timeline from './components/Timeline';
 import { parseTimelineData } from './utils/timelineParser';
+import { useLanguage } from './i18n/LanguageContext';
 import './App.css';
 
 const DEFAULT_DATA = '新:9 - 25,东汉:25 - 220,魏:220 - 266,蜀:221 - 263,吴:222 - 280';
@@ -18,9 +19,11 @@ const RESOLUTION_PLACEHOLDERS = {
 };
 
 function App() {
+  const { language, setLanguage, t } = useLanguage();
   const [input, setInput] = useState(DEFAULT_DATA);
   const [resolution, setResolution] = useState('year');
   const [orientation, setOrientation] = useState('horizontal');
+  const [theme, setTheme] = useState('colorful');
   const [events, setEvents] = useState(parseTimelineData(DEFAULT_DATA, 'year'));
 
   const handleVisualize = () => {
@@ -46,23 +49,23 @@ function App() {
   return (
     <div className="app">
       <header className="app-header">
-        <h1>ChronoStack Timeline Visualizer</h1>
-        <p className="subtitle">Visualize historical events on an interactive timeline</p>
+        <h1>{t('appTitle')}</h1>
+        <p className="subtitle">{t('appSubtitle')}</p>
       </header>
 
       <main className="app-main">
         <div className="input-section">
           <div className="input-header">
             <label htmlFor="timeline-input" className="input-label">
-              Timeline Data
+              {t('timelineData')}
               <span className="input-hint">
-                Format: {RESOLUTION_FORMATS[resolution]}
+                {t('formatHint')}: {RESOLUTION_FORMATS[resolution]}
               </span>
             </label>
             <div className="controls-group">
               <div className="resolution-selector">
                 <label htmlFor="resolution" className="resolution-label">
-                  Resolution:
+                  {t('resolution')}:
                 </label>
                 <select
                   id="resolution"
@@ -70,14 +73,14 @@ function App() {
                   value={resolution}
                   onChange={(e) => handleResolutionChange(e.target.value)}
                 >
-                  <option value="year">Year</option>
-                  <option value="month">Month</option>
-                  <option value="day">Day</option>
+                  <option value="year">{t('year')}</option>
+                  <option value="month">{t('month')}</option>
+                  <option value="day">{t('day')}</option>
                 </select>
               </div>
               <div className="orientation-selector">
                 <label htmlFor="orientation" className="orientation-label">
-                  Orientation:
+                  {t('orientation')}:
                 </label>
                 <select
                   id="orientation"
@@ -85,8 +88,37 @@ function App() {
                   value={orientation}
                   onChange={(e) => setOrientation(e.target.value)}
                 >
-                  <option value="horizontal">Horizontal</option>
-                  <option value="vertical">Vertical</option>
+                  <option value="horizontal">{t('horizontal')}</option>
+                  <option value="vertical">{t('vertical')}</option>
+                </select>
+              </div>
+              <div className="theme-selector">
+                <label htmlFor="theme" className="theme-label">
+                  {t('theme')}:
+                </label>
+                <select
+                  id="theme"
+                  className="theme-select"
+                  value={theme}
+                  onChange={(e) => setTheme(e.target.value)}
+                >
+                  <option value="colorful">{t('colorful')}</option>
+                  <option value="classic">{t('classic')}</option>
+                </select>
+              </div>
+              <div className="language-selector">
+                <label htmlFor="language" className="language-label">
+                  {t('language')}:
+                </label>
+                <select
+                  id="language"
+                  className="language-select"
+                  value={language}
+                  onChange={(e) => setLanguage(e.target.value)}
+                >
+                  <option value="en">{t('english')}</option>
+                  <option value="zh-TW">{t('traditionalChinese')}</option>
+                  <option value="zh-CN">{t('simplifiedChinese')}</option>
                 </select>
               </div>
             </div>
@@ -102,7 +134,7 @@ function App() {
           />
           <div className="button-group">
             <button className="btn btn-primary" onClick={handleVisualize}>
-              Visualize Timeline
+              {t('visualizeButton')}
             </button>
             <button
               className="btn btn-secondary"
@@ -111,22 +143,22 @@ function App() {
                 setEvents([]);
               }}
             >
-              Clear
+              {t('clearButton')}
             </button>
           </div>
           <p className="keyboard-hint">
-            Tip: Press <kbd>Ctrl + Enter</kbd> to visualize
+            {t('keyboardHint')} <kbd>Ctrl + Enter</kbd> {t('toVisualize')}
           </p>
         </div>
 
         <div className="visualization-section">
-          <Timeline events={events} resolution={resolution} orientation={orientation} />
+          <Timeline events={events} resolution={resolution} orientation={orientation} theme={theme} />
         </div>
 
         <div className="examples-section">
-          <h3>Example Datasets - Auto Layering</h3>
+          <h3>{t('examplesAutoTitle')}</h3>
           <p className="examples-hint">
-            Events automatically distributed across layers based on time overlaps
+            {t('examplesAutoHint')}
           </p>
 
           {resolution === 'year' && (
@@ -139,7 +171,7 @@ function App() {
                   setEvents(parseTimelineData(data, 'year'));
                 }}
               >
-                Chinese Dynasties
+                {t('exampleChineseDynasties')}
               </button>
               <button
                 className="btn btn-example"
@@ -149,7 +181,7 @@ function App() {
                   setEvents(parseTimelineData(data, 'year'));
                 }}
               >
-                European Periods
+                {t('exampleEuropeanPeriods')}
               </button>
               <button
                 className="btn btn-example"
@@ -159,7 +191,7 @@ function App() {
                   setEvents(parseTimelineData(data, 'year'));
                 }}
               >
-                Historical Ages
+                {t('exampleHistoricalAges')}
               </button>
             </div>
           )}
@@ -174,7 +206,7 @@ function App() {
                   setEvents(parseTimelineData(data, 'month'));
                 }}
               >
-                Project Quarters
+                {t('exampleProjectQuarters')}
               </button>
               <button
                 className="btn btn-example"
@@ -184,7 +216,7 @@ function App() {
                   setEvents(parseTimelineData(data, 'month'));
                 }}
               >
-                Seasons 2024-2025
+                {t('exampleSeasons')}
               </button>
               <button
                 className="btn btn-example"
@@ -194,7 +226,7 @@ function App() {
                   setEvents(parseTimelineData(data, 'month'));
                 }}
               >
-                Project Phases
+                {t('exampleProjectPhases')}
               </button>
             </div>
           )}
@@ -209,7 +241,7 @@ function App() {
                   setEvents(parseTimelineData(data, 'day'));
                 }}
               >
-                Sprints
+                {t('exampleSprints')}
               </button>
               <button
                 className="btn btn-example"
@@ -219,7 +251,7 @@ function App() {
                   setEvents(parseTimelineData(data, 'day'));
                 }}
               >
-                Development Cycle
+                {t('exampleDevCycle')}
               </button>
               <button
                 className="btn btn-example"
@@ -229,16 +261,16 @@ function App() {
                   setEvents(parseTimelineData(data, 'day'));
                 }}
               >
-                Weekly Schedule
+                {t('exampleWeeklySchedule')}
               </button>
             </div>
           )}
         </div>
 
         <div className="examples-section">
-          <h3>Example Datasets - Fixed Layering</h3>
+          <h3>{t('examplesFixedTitle')}</h3>
           <p className="examples-hint">
-            Each category gets a dedicated layer. Format: <code>Category|Name:Start - End</code>
+            {t('examplesFixedHint')} <code>Category|Name:Start - End</code>
           </p>
 
           {resolution === 'year' && (
@@ -251,7 +283,7 @@ function App() {
                   setEvents(parseTimelineData(data, 'year'));
                 }}
               >
-                Warring States Rulers (秦楚齐)
+                {t('exampleWarringStates')}
               </button>
               <button
                 className="btn btn-example"
@@ -261,7 +293,7 @@ function App() {
                   setEvents(parseTimelineData(data, 'year'));
                 }}
               >
-                World Leaders 1760-1840
+                {t('exampleWorldLeaders')}
               </button>
               <button
                 className="btn btn-example"
@@ -271,7 +303,7 @@ function App() {
                   setEvents(parseTimelineData(data, 'year'));
                 }}
               >
-                Project Teams 2020-2023
+                {t('exampleProjectTeams')}
               </button>
             </div>
           )}
@@ -286,7 +318,7 @@ function App() {
                   setEvents(parseTimelineData(data, 'month'));
                 }}
               >
-                Department Initiatives
+                {t('exampleDepartments')}
               </button>
               <button
                 className="btn btn-example"
@@ -296,7 +328,7 @@ function App() {
                   setEvents(parseTimelineData(data, 'month'));
                 }}
               >
-                Team Member Projects
+                {t('exampleTeamMembers')}
               </button>
             </div>
           )}
@@ -311,7 +343,7 @@ function App() {
                   setEvents(parseTimelineData(data, 'day'));
                 }}
               >
-                Multi-Team Sprints
+                {t('exampleMultiTeamSprints')}
               </button>
               <button
                 className="btn btn-example"
@@ -321,7 +353,7 @@ function App() {
                   setEvents(parseTimelineData(data, 'day'));
                 }}
               >
-                Room Bookings
+                {t('exampleRoomBookings')}
               </button>
             </div>
           )}
@@ -329,7 +361,7 @@ function App() {
       </main>
 
       <footer className="app-footer">
-        <p>Created with React + Vite | Data format: Name:StartYear - EndYear</p>
+        <p>{t('footerText')} | {t('dataFormat')}: Name:StartYear - EndYear</p>
       </footer>
     </div>
   );

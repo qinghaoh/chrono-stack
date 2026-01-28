@@ -11,8 +11,8 @@
 .app-header {
   text-align: center;
   padding: 2rem 1rem;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
+  background: linear-gradient(135deg, #f4e4c1 0%, #e8d4a0 100%);
+  color: #3e2723;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }
 
@@ -63,14 +63,18 @@
 }
 
 .resolution-selector,
-.orientation-selector {
+.orientation-selector,
+.theme-selector,
+.language-selector {
   display: flex;
   align-items: center;
   gap: 0.5rem;
 }
 
 .resolution-label,
-.orientation-label {
+.orientation-label,
+.theme-label,
+.language-label {
   font-size: 0.9rem;
   font-weight: 500;
   color: #4b5563;
@@ -78,7 +82,9 @@
 }
 
 .resolution-select,
-.orientation-select {
+.orientation-select,
+.theme-select,
+.language-select {
   padding: 0.5rem 0.75rem;
   font-size: 0.9rem;
   border: 2px solid #d1d5db;
@@ -90,12 +96,16 @@
 }
 
 .resolution-select:hover,
-.orientation-select:hover {
+.orientation-select:hover,
+.theme-select:hover,
+.language-select:hover {
   border-color: #9ca3af;
 }
 
 .resolution-select:focus,
-.orientation-select:focus {
+.orientation-select:focus,
+.theme-select:focus,
+.language-select:focus {
   outline: none;
   border-color: #667eea;
   box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
@@ -265,12 +275,16 @@ kbd {
   }
 
   .resolution-selector,
-  .orientation-selector {
+  .orientation-selector,
+  .theme-selector,
+  .language-selector {
     width: 100%;
   }
 
   .resolution-select,
-  .orientation-select {
+  .orientation-select,
+  .theme-select,
+  .language-select {
     flex: 1;
   }
 
