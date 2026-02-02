@@ -88,36 +88,99 @@ export function parseTimelineData(input, resolution = 'year') {
   }
 
   const events = [];
-  const entries = input.split(',').map(e => e.trim()).filter(e => e);
 
-  for (const entry of entries) {
-    // Check for category format: "Category|Name:Start - End"
-    let category = null;
-    let entryWithoutCategory = entry;
+  // Check if input uses the new compact format (lines with Category|entries)
+  // New format: each line is "Category|Name1:Start-End,Name2:Start-End,..."
+  const lines = input.split('\n').map(l => l.trim()).filter(l => l);
 
-    if (entry.includes('|')) {
-      const pipeIndex = entry.indexOf('|');
-      category = entry.substring(0, pipeIndex).trim();
-      entryWithoutCategory = entry.substring(pipeIndex + 1).trim();
-    }
+  // Detect format: if a line starts with "Category|" followed by entries without "|" in them
+  const isCompactFormat = lines.some(line => {
+    if (!line.includes('|')) return false;
+    const pipeIndex = line.indexOf('|');
+    const afterPipe = line.substring(pipeIndex + 1);
+    // In compact format, entries after | don't contain |
+    // In old format, each comma-separated entry might have its own |
+    const entries = afterPipe.split(',');
+    return entries.length > 1 && entries.slice(1).every(e => !e.includes('|'));
+  });
 
-    // Match pattern: "Name:Start - End"
-    const match = entryWithoutCategory.match(/^(.+?):(.+?)\s*-\s*(.+?)$/);
-    if (match) {
-      const [, name, startStr, endStr] = match;
-      const start = parseTimeValue(startStr, resolution);
-      const end = parseTimeValue(endStr, resolution);
+  if (isCompactFormat) {
+    // New compact format: Category|Entry1,Entry2,Entry3 (one category per line)
+    for (const line of lines) {
+      let category = null;
+      let entriesStr = line;
 
-      if (!isNaN(start) && !isNaN(end)) {
-        events.push({
-          name: name.trim(),
-          category,
-          start,
-          end,
-          startStr: startStr.trim(),
-          endStr: endStr.trim(),
-        });
+      if (line.includes('|')) {
+        const pipeIndex = line.indexOf('|');
+        category = line.substring(0, pipeIndex).trim();
+        entriesStr = line.substring(pipeIndex + 1).trim();
       }
+
+      const entries = entriesStr.split(',').map(e => e.trim()).filter(e => e);
+
+      for (const entry of entries) {
+        // Match pattern: "Name:Start - End" or "Name:Start - End{note}"
+        const match = entry.match(/^(.+?):(.+?)\s*-\s*([^{]+?)(?:\{(.+?)\})?$/);
+        if (match) {
+          const [, name, startStr, endStr, note] = match;
+          const start = parseTimeValue(startStr, resolution);
+          const end = parseTimeValue(endStr, resolution);
+
+          if (!isNaN(start) && !isNaN(end)) {
+            events.push({
+              name: name.trim(),
+              category,
+              start,
+              end,
+              startStr: startStr.trim(),
+              endStr: endStr.trim(),
+              note: note ? note.trim() : null,
+            });
+          }
+        }
+      }
+    }
+  } else {
+    // Old format: Category|Name:Start - End,Category|Name:Start - End,...
+    const allEntries = input.split(',').map(e => e.trim()).filter(e => e);
+
+    for (const entry of allEntries) {
+      let category = null;
+      let entryWithoutCategory = entry;
+
+      if (entry.includes('|')) {
+        const pipeIndex = entry.indexOf('|');
+        category = entry.substring(0, pipeIndex).trim();
+        entryWithoutCategory = entry.substring(pipeIndex + 1).trim();
+      }
+
+      // Match pattern: "Name:Start - End" or "Name:Start - End{note}"
+      const match = entryWithoutCategory.match(/^(.+?):(.+?)\s*-\s*([^{]+?)(?:\{(.+?)\})?$/);
+      if (match) {
+        const [, name, startStr, endStr, note] = match;
+        const start = parseTimeValue(startStr, resolution);
+        const end = parseTimeValue(endStr, resolution);
+
+        if (!isNaN(start) && !isNaN(end)) {
+          events.push({
+            name: name.trim(),
+            category,
+            start,
+            end,
+            startStr: startStr.trim(),
+            endStr: endStr.trim(),
+            note: note ? note.trim() : null,
+          });
+        }
+      }
+    }
+  }
+
+  // Assign note indices to events that have notes
+  let noteIndex = 1;
+  for (const event of events) {
+    if (event.note) {
+      event.noteIndex = noteIndex++;
     }
   }
 
@@ -219,6 +282,20 @@ function calculateFixedLayers(events) {
 }
 
 /**
+ * Get footnotes from events (events that have notes)
+ */
+export function getFootnotes(events) {
+  return events
+    .filter(e => e.note && e.noteIndex)
+    .map(e => ({
+      index: e.noteIndex,
+      name: e.name,
+      note: e.note,
+    }))
+    .sort((a, b) => a.index - b.index);
+}
+
+/**
  * Get category labels for fixed-layering mode
  */
 export function getCategoryLabels(events) {
@@ -232,18 +309,111 @@ export function getCategoryLabels(events) {
 }
 
 /**
- * Get the time range for all events
+ * Adjust overlapping events within the same layer
+ * For each time unit, if N events include it, divide that unit into N parts
+ *
+ * Example: 李傀(760-760), 桑如珪(760-760), 郭子儀(760-761), 臧希讓(761-762)
+ * - Year 760: shared by 3 events → each gets 1/3
+ * - Year 761: shared by 2 events (郭子儀, 臧希讓) → each gets 1/2
+ * - 郭子儀's visual duration = 1/3 (for 760) + 1/2 (for 761) = 5/6
+ */
+function adjustOverlappingEvents(events) {
+  if (events.length === 0) return events;
+
+  // Group events by layer
+  const layerGroups = {};
+  events.forEach(event => {
+    const layer = event.layer;
+    if (!layerGroups[layer]) {
+      layerGroups[layer] = [];
+    }
+    layerGroups[layer].push(event);
+  });
+
+  const adjustedEvents = [];
+
+  // Process each layer
+  Object.values(layerGroups).forEach(layerEvents => {
+    // Assign unique index to each event for later lookup
+    const eventIndices = new Map();
+    layerEvents.forEach((event, idx) => {
+      eventIndices.set(event, idx);
+    });
+
+    // Find all time units and which events include them
+    const timeUnits = new Map(); // timeUnit -> list of events that include it
+
+    for (const event of layerEvents) {
+      // For each time unit from floor(start) to floor(end) (inclusive)
+      const startUnit = Math.floor(event.start);
+      const endUnit = Math.floor(event.end);
+      for (let t = startUnit; t <= endUnit; t++) {
+        if (!timeUnits.has(t)) {
+          timeUnits.set(t, []);
+        }
+        timeUnits.get(t).push(event);
+      }
+    }
+
+    // Sort events within each time unit by start time, then by duration (shorter first)
+    for (const [t, eventsInUnit] of timeUnits.entries()) {
+      eventsInUnit.sort((a, b) => {
+        if (a.start !== b.start) return a.start - b.start;
+        return (a.end - a.start) - (b.end - b.start);
+      });
+    }
+
+    // Calculate visual positions for each event
+    const layerAdjusted = layerEvents.map(event => {
+      const startUnit = Math.floor(event.start);
+      const endUnit = Math.floor(event.end);
+
+      // Find position in start unit
+      const eventsInStartUnit = timeUnits.get(startUnit);
+      const startPosition = eventsInStartUnit.findIndex(e => eventIndices.get(e) === eventIndices.get(event));
+      const startCount = eventsInStartUnit.length;
+      const visualStart = startUnit + startPosition / startCount;
+
+      // Find position in end unit
+      const eventsInEndUnit = timeUnits.get(endUnit);
+      const endPosition = eventsInEndUnit.findIndex(e => eventIndices.get(e) === eventIndices.get(event));
+      const endCount = eventsInEndUnit.length;
+      const visualEnd = endUnit + (endPosition + 1) / endCount;
+
+      return {
+        ...event,
+        visualStart,
+        visualEnd,
+      };
+    });
+
+    adjustedEvents.push(...layerAdjusted);
+  });
+
+  return adjustedEvents;
+}
+
+/**
+ * Get the time range for all events (using visual positions if available)
  */
 export function getTimeRange(events) {
   if (events.length === 0) {
     return { min: 0, max: 100 };
   }
 
-  const starts = events.map(e => e.start);
-  const ends = events.map(e => e.end);
+  const starts = events.map(e => e.visualStart !== undefined ? e.visualStart : e.start);
+  const ends = events.map(e => e.visualEnd !== undefined ? e.visualEnd : e.end);
 
   return {
     min: Math.min(...starts),
     max: Math.max(...ends),
   };
+}
+
+/**
+ * Process events: calculate layers and adjust overlapping events
+ */
+export function processEvents(events) {
+  const layeredEvents = calculateLayers(events);
+  return adjustOverlappingEvents(layeredEvents);
 }

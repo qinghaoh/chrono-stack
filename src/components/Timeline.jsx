@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { calculateLayers, getTimeRange, formatTimeValue, getCategoryLabels } from '../utils/timelineParser';
+import { processEvents, getTimeRange, formatTimeValue, getCategoryLabels, getFootnotes } from '../utils/timelineParser';
 import { useLanguage } from '../i18n/LanguageContext';
 import './Timeline.css';
 
@@ -61,11 +61,41 @@ function estimateTextWidth(text, fontSize = 14, fontWeight = 'normal') {
   return totalWidth;
 }
 
+// Helper function to split text into lines (max chars per line)
+function splitTextIntoLines(text, maxCharsPerLine = 5) {
+  const lines = [];
+  for (let i = 0; i < text.length; i += maxCharsPerLine) {
+    lines.push(text.slice(i, i + maxCharsPerLine));
+  }
+  return lines;
+}
+
+// Calculate label box dimensions based on text content
+function calculateLabelDimensions(labels, fontSize = 13, maxCharsPerLine = 5) {
+  let maxLines = 1;
+
+  for (const [, label] of labels) {
+    const lines = splitTextIntoLines(label, maxCharsPerLine);
+    maxLines = Math.max(maxLines, lines.length);
+  }
+
+  // Width: max chars * char width + padding
+  const charWidth = fontSize * 1.0; // Chinese char width
+  const boxWidth = maxCharsPerLine * charWidth + 20; // 10px padding on each side
+
+  // Height: lines * line height + padding
+  const lineHeight = fontSize * 1.4;
+  const boxHeight = maxLines * lineHeight + 16; // 8px padding on top and bottom
+
+  return { boxWidth, boxHeight, maxLines };
+}
+
 function Timeline({ events, resolution = 'year', orientation = 'horizontal', theme = 'colorful' }) {
   const { t } = useLanguage();
-  const layeredEvents = useMemo(() => calculateLayers(events), [events]);
-  const timeRange = useMemo(() => getTimeRange(events), [events]);
+  const layeredEvents = useMemo(() => processEvents(events), [events]);
+  const timeRange = useMemo(() => getTimeRange(layeredEvents), [layeredEvents]);
   const categoryLabels = useMemo(() => getCategoryLabels(layeredEvents), [layeredEvents]);
+  const footnotes = useMemo(() => getFootnotes(layeredEvents), [layeredEvents]);
   const themeConfig = theme === 'classic' ? CLASSIC_THEME : COLORFUL_THEME;
 
   if (events.length === 0) {
@@ -81,6 +111,7 @@ function Timeline({ events, resolution = 'year', orientation = 'horizontal', the
       layeredEvents={layeredEvents}
       timeRange={timeRange}
       categoryLabels={categoryLabels}
+      footnotes={footnotes}
       resolution={resolution}
       themeConfig={themeConfig}
     />;
@@ -90,24 +121,34 @@ function Timeline({ events, resolution = 'year', orientation = 'horizontal', the
     layeredEvents={layeredEvents}
     timeRange={timeRange}
     categoryLabels={categoryLabels}
+    footnotes={footnotes}
     resolution={resolution}
     themeConfig={themeConfig}
   />;
 }
 
-function TimelineHorizontal({ layeredEvents, timeRange, categoryLabels, resolution, themeConfig }) {
+function TimelineHorizontal({ layeredEvents, timeRange, categoryLabels, footnotes, resolution, themeConfig }) {
   const numLayers = Math.max(...layeredEvents.map(e => e.layer), 0) + 1;
   const hasCategories = categoryLabels.size > 0;
-  const leftPadding = hasCategories ? 120 : 60;
+  const hasFootnotes = footnotes && footnotes.length > 0;
+
+  // Calculate adaptive label dimensions
+  const labelDims = hasCategories ? calculateLabelDimensions(categoryLabels, 13, 5) : { boxWidth: 0, boxHeight: 50 };
+  const leftPadding = hasCategories ? labelDims.boxWidth + 20 : 60;
   const padding = 60;
-  const layerHeight = 60;
-  const height = numLayers * layerHeight + padding * 2;
+  const layerHeight = Math.max(60, labelDims.boxHeight + 10);
+
+  // Add space for footnotes if present
+  const footnoteHeight = hasFootnotes ? footnotes.length * 22 + 40 : 0;
+  const height = numLayers * layerHeight + padding * 2 + footnoteHeight;
   const timeSpan = timeRange.max - timeRange.min;
 
-  // Calculate minimum width needed for each event
+  // Calculate minimum width needed for each event (using visual positions)
   let minPixelsPerTimeUnit = 0;
   for (const event of layeredEvents) {
-    const eventDuration = event.end - event.start;
+    const visualStart = event.visualStart !== undefined ? event.visualStart : event.start;
+    const visualEnd = event.visualEnd !== undefined ? event.visualEnd : event.end;
+    const eventDuration = visualEnd - visualStart;
     if (eventDuration <= 0) continue;
 
     // Calculate minimum width needed for this event's text
@@ -157,32 +198,42 @@ function TimelineHorizontal({ layeredEvents, timeRange, categoryLabels, resoluti
     <div className="timeline-container timeline-horizontal-scroll">
       <svg width={width} height={height} className="timeline-svg">
         {/* Category labels */}
-        {hasCategories && Array.from(categoryLabels.entries()).map(([layerIndex, label]) => (
-          <g key={`label-${layerIndex}`}>
-            <rect
-              x={10}
-              y={padding + layerIndex * layerHeight}
-              width={leftPadding - 20}
-              height={layerHeight - 10}
-              fill="#f3f4f6"
-              stroke="#d1d5db"
-              strokeWidth="1"
-              rx="4"
-            />
-            <text
-              x={leftPadding / 2}
-              y={padding + layerIndex * layerHeight + layerHeight / 2}
-              textAnchor="middle"
-              dominantBaseline="middle"
-              fontSize="13"
-              fontWeight="600"
-              fill="#374151"
-              className="category-label"
-            >
-              {label}
-            </text>
-          </g>
-        ))}
+        {hasCategories && Array.from(categoryLabels.entries()).map(([layerIndex, label]) => {
+          const lines = splitTextIntoLines(label, 5);
+          const lineHeight = 13 * 1.4;
+          const textStartY = padding + layerIndex * layerHeight + (layerHeight - 10) / 2 - (lines.length - 1) * lineHeight / 2;
+
+          return (
+            <g key={`label-${layerIndex}`}>
+              <rect
+                x={10}
+                y={padding + layerIndex * layerHeight}
+                width={labelDims.boxWidth}
+                height={layerHeight - 10}
+                fill="#f3f4f6"
+                stroke="#d1d5db"
+                strokeWidth="1"
+                rx="4"
+              />
+              <text
+                x={10 + labelDims.boxWidth / 2}
+                y={textStartY}
+                textAnchor="middle"
+                dominantBaseline="middle"
+                fontSize="13"
+                fontWeight="600"
+                fill="#374151"
+                className="category-label"
+              >
+                {lines.map((line, i) => (
+                  <tspan key={i} x={10 + labelDims.boxWidth / 2} dy={i === 0 ? 0 : lineHeight}>
+                    {line}
+                  </tspan>
+                ))}
+              </text>
+            </g>
+          );
+        })}
 
         {/* Time axis */}
         <line
@@ -219,14 +270,17 @@ function TimelineHorizontal({ layeredEvents, timeRange, categoryLabels, resoluti
 
         {/* Timeline events */}
         {layeredEvents.map((event, index) => {
-          const x = timeToX(event.start);
-          const eventWidth = timeToX(event.end) - x;
+          // Use visual positions for rendering, but original values for display
+          const visualStart = event.visualStart !== undefined ? event.visualStart : event.start;
+          const visualEnd = event.visualEnd !== undefined ? event.visualEnd : event.end;
+          const x = timeToX(visualStart);
+          const eventWidth = timeToX(visualEnd) - x;
           const y = padding + event.layer * layerHeight;
           const color = themeConfig.colors[index % themeConfig.colors.length];
 
           return (
             <g key={`${event.name}-${index}`}>
-              <title>{event.name}&#10;({event.startStr || formatTimeValue(event.start, resolution)} - {event.endStr || formatTimeValue(event.end, resolution)})</title>
+              <title>{event.name}&#10;({event.startStr || formatTimeValue(event.start, resolution)} - {event.endStr || formatTimeValue(event.end, resolution)}){event.note ? `\n[${event.noteIndex}] ${event.note}` : ''}</title>
               <rect
                 x={x}
                 y={y}
@@ -248,7 +302,7 @@ function TimelineHorizontal({ layeredEvents, timeRange, categoryLabels, resoluti
                 fontWeight="bold"
                 className="timeline-text"
               >
-                {event.name}
+                {event.name}{event.noteIndex ? ` [${event.noteIndex}]` : ''}
               </text>
               <text
                 x={x + eventWidth / 2}
@@ -264,24 +318,59 @@ function TimelineHorizontal({ layeredEvents, timeRange, categoryLabels, resoluti
             </g>
           );
         })}
+
+        {/* Footnotes section */}
+        {hasFootnotes && (
+          <g className="footnotes-section">
+            <line
+              x1={leftPadding}
+              y1={numLayers * layerHeight + padding + 20}
+              x2={width - padding}
+              y2={numLayers * layerHeight + padding + 20}
+              stroke="#d1d5db"
+              strokeWidth="1"
+            />
+            {footnotes.map((footnote, idx) => (
+              <text
+                key={footnote.index}
+                x={leftPadding}
+                y={numLayers * layerHeight + padding + 45 + idx * 22}
+                fontSize="12"
+                fill="#374151"
+                className="footnote-text"
+              >
+                [{footnote.index}] {footnote.name}: {footnote.note}
+              </text>
+            ))}
+          </g>
+        )}
       </svg>
     </div>
   );
 }
 
-function TimelineVertical({ layeredEvents, timeRange, categoryLabels, resolution, themeConfig }) {
+function TimelineVertical({ layeredEvents, timeRange, categoryLabels, footnotes, resolution, themeConfig }) {
   const numLayers = Math.max(...layeredEvents.map(e => e.layer), 0) + 1;
   const hasCategories = categoryLabels.size > 0;
-  const topPadding = hasCategories ? 100 : 60;
+  const hasFootnotes = footnotes && footnotes.length > 0;
+
+  // Calculate adaptive label dimensions for vertical layout
+  const labelDims = hasCategories ? calculateLabelDimensions(categoryLabels, 13, 5) : { boxWidth: 70, boxHeight: 50 };
+  const topPadding = hasCategories ? labelDims.boxHeight + 20 : 60;
   const padding = 100; // Increased from 60 to 100 to prevent negative sign clipping
-  const layerWidth = 80;
-  const width = numLayers * layerWidth + padding * 2;
+  const layerWidth = Math.max(80, labelDims.boxWidth + 10);
+
+  // Add space for footnotes on the right side if present
+  const footnoteWidth = hasFootnotes ? 350 : 0;
+  const width = numLayers * layerWidth + padding * 2 + footnoteWidth;
   const timeSpan = timeRange.max - timeRange.min;
 
-  // Calculate minimum height needed for each event
+  // Calculate minimum height needed for each event (using visual positions)
   let minPixelsPerTimeUnit = 0;
   for (const event of layeredEvents) {
-    const eventDuration = event.end - event.start;
+    const visualStart = event.visualStart !== undefined ? event.visualStart : event.start;
+    const visualEnd = event.visualEnd !== undefined ? event.visualEnd : event.end;
+    const eventDuration = visualEnd - visualStart;
     if (eventDuration <= 0) continue;
 
     // For vertical layout, we need space for:
@@ -328,32 +417,46 @@ function TimelineVertical({ layeredEvents, timeRange, categoryLabels, resolution
     <div className="timeline-container">
       <svg width={width} height={height} className="timeline-svg">
         {/* Category labels (at top) */}
-        {hasCategories && Array.from(categoryLabels.entries()).map(([layerIndex, label]) => (
-          <g key={`label-${layerIndex}`}>
-            <rect
-              x={padding + layerIndex * layerWidth}
-              y={10}
-              width={layerWidth - 10}
-              height={topPadding - 20}
-              fill="#f3f4f6"
-              stroke="#d1d5db"
-              strokeWidth="1"
-              rx="4"
-            />
-            <text
-              x={padding + layerIndex * layerWidth + layerWidth / 2}
-              y={topPadding / 2}
-              textAnchor="middle"
-              dominantBaseline="middle"
-              fontSize="13"
-              fontWeight="600"
-              fill="#374151"
-              className="category-label"
-            >
-              {label}
-            </text>
-          </g>
-        ))}
+        {hasCategories && Array.from(categoryLabels.entries()).map(([layerIndex, label]) => {
+          const lines = splitTextIntoLines(label, 5);
+          const lineHeight = 13 * 1.4;
+          const boxX = padding + layerIndex * layerWidth;
+          const boxY = 10;
+          const boxW = layerWidth - 10;
+          const boxH = labelDims.boxHeight;
+          const textStartY = boxY + boxH / 2 - (lines.length - 1) * lineHeight / 2;
+
+          return (
+            <g key={`label-${layerIndex}`}>
+              <rect
+                x={boxX}
+                y={boxY}
+                width={boxW}
+                height={boxH}
+                fill="#f3f4f6"
+                stroke="#d1d5db"
+                strokeWidth="1"
+                rx="4"
+              />
+              <text
+                x={boxX + boxW / 2}
+                y={textStartY}
+                textAnchor="middle"
+                dominantBaseline="middle"
+                fontSize="13"
+                fontWeight="600"
+                fill="#374151"
+                className="category-label"
+              >
+                {lines.map((line, i) => (
+                  <tspan key={i} x={boxX + boxW / 2} dy={i === 0 ? 0 : lineHeight}>
+                    {line}
+                  </tspan>
+                ))}
+              </text>
+            </g>
+          );
+        })}
 
         {/* Time axis (vertical) */}
         <line
@@ -391,8 +494,11 @@ function TimelineVertical({ layeredEvents, timeRange, categoryLabels, resolution
 
         {/* Timeline events */}
         {layeredEvents.map((event, index) => {
-          const y = timeToY(event.start);
-          const eventHeight = timeToY(event.end) - y;
+          // Use visual positions for rendering, but original values for display
+          const visualStart = event.visualStart !== undefined ? event.visualStart : event.start;
+          const visualEnd = event.visualEnd !== undefined ? event.visualEnd : event.end;
+          const y = timeToY(visualStart);
+          const eventHeight = timeToY(visualEnd) - y;
           const x = padding + event.layer * layerWidth;
           const color = themeConfig.colors[index % themeConfig.colors.length];
 
@@ -401,7 +507,7 @@ function TimelineVertical({ layeredEvents, timeRange, categoryLabels, resolution
 
           return (
             <g key={`${event.name}-${index}`}>
-              <title>{event.name}&#10;({event.startStr || formatTimeValue(event.start, resolution)} - {event.endStr || formatTimeValue(event.end, resolution)})</title>
+              <title>{event.name}&#10;({event.startStr || formatTimeValue(event.start, resolution)} - {event.endStr || formatTimeValue(event.end, resolution)}){event.note ? `\n[${event.noteIndex}] ${event.note}` : ''}</title>
               <rect
                 x={x}
                 y={y}
@@ -424,7 +530,7 @@ function TimelineVertical({ layeredEvents, timeRange, categoryLabels, resolution
                 fontWeight="bold"
                 className="timeline-text"
               >
-                {event.name}
+                {event.name}{event.noteIndex ? ` [${event.noteIndex}]` : ''}
               </text>
               {/* Time period - horizontal text */}
               <text
@@ -452,6 +558,32 @@ function TimelineVertical({ layeredEvents, timeRange, categoryLabels, resolution
             </g>
           );
         })}
+
+        {/* Footnotes section (on the right side) */}
+        {hasFootnotes && (
+          <g className="footnotes-section">
+            <line
+              x1={numLayers * layerWidth + padding + 20}
+              y1={topPadding}
+              x2={numLayers * layerWidth + padding + 20}
+              y2={height - padding}
+              stroke="#d1d5db"
+              strokeWidth="1"
+            />
+            {footnotes.map((footnote, idx) => (
+              <text
+                key={footnote.index}
+                x={numLayers * layerWidth + padding + 35}
+                y={topPadding + 20 + idx * 22}
+                fontSize="12"
+                fill="#374151"
+                className="footnote-text"
+              >
+                [{footnote.index}] {footnote.name}: {footnote.note}
+              </text>
+            ))}
+          </g>
+        )}
       </svg>
     </div>
   );
