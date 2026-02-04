@@ -36,6 +36,13 @@ export const translations = {
 
     // Empty State
     emptyState: 'Enter timeline data to visualize',
+    noLayersSelected: 'No layers selected. Check at least one layer to display.',
+
+    // Layer Control
+    layers: 'Layers',
+    layer: 'Layer',
+    all: 'All',
+    none: 'None',
 
     // Examples
     examplesAutoTitle: 'Example Datasets - Auto Layering',
@@ -105,6 +112,13 @@ export const translations = {
 
     // Empty State
     emptyState: '輸入時間線數據以進行可視化',
+    noLayersSelected: '未選擇任何層。請勾選至少一個層來顯示。',
+
+    // Layer Control
+    layers: '圖層',
+    layer: '層',
+    all: '全選',
+    none: '全不選',
 
     // Examples
     examplesAutoTitle: '範例數據集 - 自動分層',
@@ -174,6 +188,13 @@ export const translations = {
 
     // Empty State
     emptyState: '输入时间线数据以进行可视化',
+    noLayersSelected: '未选择任何层。请勾选至少一个层来显示。',
+
+    // Layer Control
+    layers: '图层',
+    layer: '层',
+    all: '全选',
+    none: '全不选',
 
     // Examples
     examplesAutoTitle: '示例数据集 - 自动分层',

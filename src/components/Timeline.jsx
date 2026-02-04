@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { processEvents, getTimeRange, formatTimeValue, getCategoryLabels, getFootnotes } from '../utils/timelineParser';
 import { useLanguage } from '../i18n/LanguageContext';
 import './Timeline.css';
@@ -70,13 +70,37 @@ function splitTextIntoLines(text, maxCharsPerLine = 5) {
   return lines;
 }
 
+// Build display text for a category label with transitions
+function buildLabelDisplayText(labelInfo) {
+  if (typeof labelInfo === 'string') {
+    return labelInfo; // Backward compatibility
+  }
+  const { label, transitions } = labelInfo;
+  if (!transitions || transitions.length === 0) {
+    return label;
+  }
+  // Format: "OriginalName\n→NewName(year)"
+  let text = label;
+  for (const t of transitions) {
+    text += `\n→${t.name}(${t.year})`;
+  }
+  return text;
+}
+
 // Calculate label box dimensions based on text content
 function calculateLabelDimensions(labels, fontSize = 13, maxCharsPerLine = 5) {
   let maxLines = 1;
 
-  for (const [, label] of labels) {
-    const lines = splitTextIntoLines(label, maxCharsPerLine);
-    maxLines = Math.max(maxLines, lines.length);
+  for (const [, labelInfo] of labels) {
+    const displayText = buildLabelDisplayText(labelInfo);
+    // Count lines (including transition lines which use \n)
+    const textLines = displayText.split('\n');
+    let totalLines = 0;
+    for (const line of textLines) {
+      const wrappedLines = splitTextIntoLines(line, maxCharsPerLine);
+      totalLines += wrappedLines.length;
+    }
+    maxLines = Math.max(maxLines, totalLines);
   }
 
   // Width: max chars * char width + padding
@@ -93,10 +117,76 @@ function calculateLabelDimensions(labels, fontSize = 13, maxCharsPerLine = 5) {
 function Timeline({ events, resolution = 'year', orientation = 'horizontal', theme = 'colorful' }) {
   const { t } = useLanguage();
   const layeredEvents = useMemo(() => processEvents(events), [events]);
-  const timeRange = useMemo(() => getTimeRange(layeredEvents), [layeredEvents]);
   const categoryLabels = useMemo(() => getCategoryLabels(layeredEvents), [layeredEvents]);
-  const footnotes = useMemo(() => getFootnotes(layeredEvents), [layeredEvents]);
   const themeConfig = theme === 'classic' ? CLASSIC_THEME : COLORFUL_THEME;
+
+  // Get all unique layers (for auto-layering, use layer index; for fixed-layering, use category names)
+  const allLayers = useMemo(() => {
+    if (categoryLabels.size > 0) {
+      // Fixed layering: use category labels
+      return Array.from(categoryLabels.entries()).map(([layerIndex, labelInfo]) => ({
+        id: layerIndex,
+        label: typeof labelInfo === 'string' ? labelInfo : labelInfo.label,
+        transitions: typeof labelInfo === 'string' ? [] : (labelInfo.transitions || []),
+      }));
+    } else {
+      // Auto layering: use layer indices
+      const maxLayer = Math.max(...layeredEvents.map(e => e.layer), -1);
+      return Array.from({ length: maxLayer + 1 }, (_, i) => ({
+        id: i,
+        label: `${t('layer')} ${i + 1}`,
+        transitions: [],
+      }));
+    }
+  }, [layeredEvents, categoryLabels, t]);
+
+  // State for visible layers - initialize all as visible
+  const [visibleLayers, setVisibleLayers] = useState(() => new Set(allLayers.map(l => l.id)));
+
+  // Reset visible layers when allLayers changes (new data loaded)
+  useEffect(() => {
+    setVisibleLayers(new Set(allLayers.map(l => l.id)));
+  }, [allLayers.length, events]);
+
+  // Filter events based on visible layers
+  const filteredEvents = useMemo(() => {
+    return layeredEvents.filter(e => visibleLayers.has(e.layer));
+  }, [layeredEvents, visibleLayers]);
+
+  // Recalculate time range based on filtered events
+  const timeRange = useMemo(() => getTimeRange(filteredEvents), [filteredEvents]);
+  const footnotes = useMemo(() => getFootnotes(filteredEvents), [filteredEvents]);
+
+  // Filter category labels based on visible layers
+  const filteredCategoryLabels = useMemo(() => {
+    const filtered = new Map();
+    for (const [layerIndex, label] of categoryLabels.entries()) {
+      if (visibleLayers.has(layerIndex)) {
+        filtered.set(layerIndex, label);
+      }
+    }
+    return filtered;
+  }, [categoryLabels, visibleLayers]);
+
+  const handleLayerToggle = (layerId) => {
+    setVisibleLayers(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(layerId)) {
+        newSet.delete(layerId);
+      } else {
+        newSet.add(layerId);
+      }
+      return newSet;
+    });
+  };
+
+  const handleSelectAll = () => {
+    setVisibleLayers(new Set(allLayers.map(l => l.id)));
+  };
+
+  const handleSelectNone = () => {
+    setVisibleLayers(new Set());
+  };
 
   if (events.length === 0) {
     return (
@@ -106,25 +196,61 @@ function Timeline({ events, resolution = 'year', orientation = 'horizontal', the
     );
   }
 
-  if (orientation === 'vertical') {
-    return <TimelineVertical
-      layeredEvents={layeredEvents}
-      timeRange={timeRange}
-      categoryLabels={categoryLabels}
-      footnotes={footnotes}
-      resolution={resolution}
-      themeConfig={themeConfig}
-    />;
-  }
+  // Only show layer control if there are multiple layers
+  const showLayerControl = allLayers.length > 1;
 
-  return <TimelineHorizontal
-    layeredEvents={layeredEvents}
-    timeRange={timeRange}
-    categoryLabels={categoryLabels}
-    footnotes={footnotes}
-    resolution={resolution}
-    themeConfig={themeConfig}
-  />;
+  return (
+    <div className="timeline-wrapper">
+      {showLayerControl && (
+        <div className="layer-control">
+          <div className="layer-control-header">
+            <span className="layer-control-title">{t('layers')}</span>
+            <div className="layer-control-actions">
+              <button className="layer-btn" onClick={handleSelectAll}>{t('all')}</button>
+              <button className="layer-btn" onClick={handleSelectNone}>{t('none')}</button>
+            </div>
+          </div>
+          <div className="layer-control-list">
+            {allLayers.map((layer) => (
+              <label key={layer.id} className="layer-checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={visibleLayers.has(layer.id)}
+                  onChange={() => handleLayerToggle(layer.id)}
+                  className="layer-checkbox"
+                />
+                <span className="layer-name">{layer.label}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {filteredEvents.length === 0 ? (
+        <div className="timeline-empty">
+          {t('noLayersSelected')}
+        </div>
+      ) : orientation === 'vertical' ? (
+        <TimelineVertical
+          layeredEvents={filteredEvents}
+          timeRange={timeRange}
+          categoryLabels={filteredCategoryLabels}
+          footnotes={footnotes}
+          resolution={resolution}
+          themeConfig={themeConfig}
+        />
+      ) : (
+        <TimelineHorizontal
+          layeredEvents={filteredEvents}
+          timeRange={timeRange}
+          categoryLabels={filteredCategoryLabels}
+          footnotes={footnotes}
+          resolution={resolution}
+          themeConfig={themeConfig}
+        />
+      )}
+    </div>
+  );
 }
 
 function TimelineHorizontal({ layeredEvents, timeRange, categoryLabels, footnotes, resolution, themeConfig }) {
@@ -198,10 +324,27 @@ function TimelineHorizontal({ layeredEvents, timeRange, categoryLabels, footnote
     <div className="timeline-container timeline-horizontal-scroll">
       <svg width={width} height={height} className="timeline-svg">
         {/* Category labels */}
-        {hasCategories && Array.from(categoryLabels.entries()).map(([layerIndex, label]) => {
-          const lines = splitTextIntoLines(label, 5);
+        {hasCategories && Array.from(categoryLabels.entries()).map(([layerIndex, labelInfo]) => {
+          const displayText = buildLabelDisplayText(labelInfo);
+          const textLines = displayText.split('\n');
           const lineHeight = 13 * 1.4;
-          const textStartY = padding + layerIndex * layerHeight + (layerHeight - 10) / 2 - (lines.length - 1) * lineHeight / 2;
+
+          // Build all lines (each line may wrap)
+          const allLines = [];
+          textLines.forEach((textLine, lineIdx) => {
+            const wrapped = splitTextIntoLines(textLine, 5);
+            wrapped.forEach((wrappedLine, wrapIdx) => {
+              allLines.push({
+                text: wrappedLine,
+                isTransition: lineIdx > 0, // Lines after first are transitions
+                fontSize: lineIdx > 0 ? 11 : 13,
+                fontWeight: lineIdx > 0 ? '400' : '600',
+              });
+            });
+          });
+
+          const totalHeight = allLines.length * lineHeight;
+          const textStartY = padding + layerIndex * layerHeight + (layerHeight - 10) / 2 - totalHeight / 2 + lineHeight / 2;
 
           return (
             <g key={`label-${layerIndex}`}>
@@ -220,19 +363,56 @@ function TimelineHorizontal({ layeredEvents, timeRange, categoryLabels, footnote
                 y={textStartY}
                 textAnchor="middle"
                 dominantBaseline="middle"
-                fontSize="13"
-                fontWeight="600"
-                fill="#374151"
                 className="category-label"
               >
-                {lines.map((line, i) => (
-                  <tspan key={i} x={10 + labelDims.boxWidth / 2} dy={i === 0 ? 0 : lineHeight}>
-                    {line}
+                {allLines.map((line, i) => (
+                  <tspan
+                    key={i}
+                    x={10 + labelDims.boxWidth / 2}
+                    dy={i === 0 ? 0 : lineHeight}
+                    fontSize={line.fontSize}
+                    fontWeight={line.fontWeight}
+                    fill={line.isTransition ? '#6b7280' : '#374151'}
+                  >
+                    {line.text}
                   </tspan>
                 ))}
               </text>
             </g>
           );
+        })}
+
+        {/* Transition marker lines */}
+        {hasCategories && Array.from(categoryLabels.entries()).map(([layerIndex, labelInfo]) => {
+          const transitions = typeof labelInfo === 'string' ? [] : (labelInfo.transitions || []);
+          return transitions.map((transition, tIdx) => {
+            const transitionX = timeToX(transition.year);
+            const y = padding + layerIndex * layerHeight;
+            // Only draw if within visible range
+            if (transitionX < leftPadding || transitionX > width - padding) return null;
+            return (
+              <g key={`transition-${layerIndex}-${tIdx}`}>
+                <line
+                  x1={transitionX}
+                  y1={y}
+                  x2={transitionX}
+                  y2={y + layerHeight - 10}
+                  stroke="#9ca3af"
+                  strokeWidth="2"
+                  strokeDasharray="4,4"
+                />
+                <text
+                  x={transitionX}
+                  y={y - 5}
+                  textAnchor="middle"
+                  fontSize="10"
+                  fill="#6b7280"
+                >
+                  {transition.year}
+                </text>
+              </g>
+            );
+          });
         })}
 
         {/* Time axis */}
@@ -417,14 +597,31 @@ function TimelineVertical({ layeredEvents, timeRange, categoryLabels, footnotes,
     <div className="timeline-container">
       <svg width={width} height={height} className="timeline-svg">
         {/* Category labels (at top) */}
-        {hasCategories && Array.from(categoryLabels.entries()).map(([layerIndex, label]) => {
-          const lines = splitTextIntoLines(label, 5);
+        {hasCategories && Array.from(categoryLabels.entries()).map(([layerIndex, labelInfo]) => {
+          const displayText = buildLabelDisplayText(labelInfo);
+          const textLines = displayText.split('\n');
           const lineHeight = 13 * 1.4;
           const boxX = padding + layerIndex * layerWidth;
           const boxY = 10;
           const boxW = layerWidth - 10;
           const boxH = labelDims.boxHeight;
-          const textStartY = boxY + boxH / 2 - (lines.length - 1) * lineHeight / 2;
+
+          // Build all lines (each line may wrap)
+          const allLines = [];
+          textLines.forEach((textLine, lineIdx) => {
+            const wrapped = splitTextIntoLines(textLine, 5);
+            wrapped.forEach((wrappedLine) => {
+              allLines.push({
+                text: wrappedLine,
+                isTransition: lineIdx > 0,
+                fontSize: lineIdx > 0 ? 11 : 13,
+                fontWeight: lineIdx > 0 ? '400' : '600',
+              });
+            });
+          });
+
+          const totalHeight = allLines.length * lineHeight;
+          const textStartY = boxY + boxH / 2 - totalHeight / 2 + lineHeight / 2;
 
           return (
             <g key={`label-${layerIndex}`}>
@@ -443,19 +640,57 @@ function TimelineVertical({ layeredEvents, timeRange, categoryLabels, footnotes,
                 y={textStartY}
                 textAnchor="middle"
                 dominantBaseline="middle"
-                fontSize="13"
-                fontWeight="600"
-                fill="#374151"
                 className="category-label"
               >
-                {lines.map((line, i) => (
-                  <tspan key={i} x={boxX + boxW / 2} dy={i === 0 ? 0 : lineHeight}>
-                    {line}
+                {allLines.map((line, i) => (
+                  <tspan
+                    key={i}
+                    x={boxX + boxW / 2}
+                    dy={i === 0 ? 0 : lineHeight}
+                    fontSize={line.fontSize}
+                    fontWeight={line.fontWeight}
+                    fill={line.isTransition ? '#6b7280' : '#374151'}
+                  >
+                    {line.text}
                   </tspan>
                 ))}
               </text>
             </g>
           );
+        })}
+
+        {/* Transition marker lines (horizontal for vertical layout) */}
+        {hasCategories && Array.from(categoryLabels.entries()).map(([layerIndex, labelInfo]) => {
+          const transitions = typeof labelInfo === 'string' ? [] : (labelInfo.transitions || []);
+          return transitions.map((transition, tIdx) => {
+            const transitionY = timeToY(transition.year);
+            const x = padding + layerIndex * layerWidth;
+            // Only draw if within visible range
+            if (transitionY < topPadding || transitionY > height - padding) return null;
+            return (
+              <g key={`transition-${layerIndex}-${tIdx}`}>
+                <line
+                  x1={x}
+                  y1={transitionY}
+                  x2={x + layerWidth - 10}
+                  y2={transitionY}
+                  stroke="#9ca3af"
+                  strokeWidth="2"
+                  strokeDasharray="4,4"
+                />
+                <text
+                  x={x - 5}
+                  y={transitionY}
+                  textAnchor="end"
+                  dominantBaseline="middle"
+                  fontSize="10"
+                  fill="#6b7280"
+                >
+                  {transition.year}
+                </text>
+              </g>
+            );
+          });
         })}
 
         {/* Time axis (vertical) */}

@@ -246,15 +246,18 @@ function calculateAutoLayers(events) {
  * Fixed-layering: Each category gets its own dedicated layer
  */
 function calculateFixedLayers(events) {
-  // Group events by category
+  // Group events by category (raw category string with transitions)
   const categoryMap = new Map();
   const categoryOrder = [];
+  const categoryParsed = new Map(); // Store parsed category info
 
   for (const event of events) {
     const cat = event.category || 'Uncategorized';
     if (!categoryMap.has(cat)) {
       categoryMap.set(cat, []);
       categoryOrder.push(cat);
+      // Parse category name and transitions
+      categoryParsed.set(cat, parseCategoryWithTransitions(cat));
     }
     categoryMap.get(cat).push(event);
   }
@@ -263,6 +266,8 @@ function calculateFixedLayers(events) {
   const result = [];
   categoryOrder.forEach((category, layerIndex) => {
     const categoryEvents = categoryMap.get(category);
+    const parsed = categoryParsed.get(category);
+
     // Sort events by start time within the category
     categoryEvents.sort((a, b) => {
       if (a.start !== b.start) return a.start - b.start;
@@ -273,7 +278,8 @@ function calculateFixedLayers(events) {
       result.push({
         ...event,
         layer: layerIndex,
-        layerLabel: category,
+        layerLabel: parsed.baseName,
+        layerTransitions: parsed.transitions,
       });
     });
   });
@@ -296,13 +302,48 @@ export function getFootnotes(events) {
 }
 
 /**
+ * Parse category name with optional transitions
+ * Format: "OriginalName{year:NewName}{year2:AnotherName}"
+ * Returns: { baseName: string, transitions: [{year: number, name: string}] }
+ */
+function parseCategoryWithTransitions(categoryStr) {
+  if (!categoryStr) return { baseName: null, transitions: [] };
+
+  const transitions = [];
+  let baseName = categoryStr;
+
+  // Extract all {year:name} patterns
+  const transitionPattern = /\{(\d+):([^}]+)\}/g;
+  let match;
+
+  while ((match = transitionPattern.exec(categoryStr)) !== null) {
+    transitions.push({
+      year: parseInt(match[1], 10),
+      name: match[2].trim(),
+    });
+  }
+
+  // Remove transition patterns from base name
+  baseName = categoryStr.replace(transitionPattern, '').trim();
+
+  // Sort transitions by year
+  transitions.sort((a, b) => a.year - b.year);
+
+  return { baseName, transitions };
+}
+
+/**
  * Get category labels for fixed-layering mode
+ * Returns a Map of layer -> { label: string, transitions: [{year: number, name: string}] }
  */
 export function getCategoryLabels(events) {
   const labels = new Map();
   for (const event of events) {
     if (event.layerLabel && !labels.has(event.layer)) {
-      labels.set(event.layer, event.layerLabel);
+      labels.set(event.layer, {
+        label: event.layerLabel,
+        transitions: event.layerTransitions || [],
+      });
     }
   }
   return labels;
